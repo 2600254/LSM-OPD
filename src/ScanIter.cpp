@@ -16,12 +16,12 @@ namespace LSMOPD {
             x = x->next.lock();
         }
         mem_ptr_num = mem_ptr_list.size();
-        block_ptr_list = new BlockPointer[20];
         std::string KEY_MAX;
         for (unsigned int i = 0; i < 16; i++) KEY_MAX += ((char) 127);
         RelVersionIterator iter(rel_version, key, KEY_MAX);
         while (!iter.End()) {
-            auto now = &block_ptr_list[block_ptr_num];
+            block_ptr_list.emplace_back();
+            auto now = &block_ptr_list.back();
             now->level = iter.GetLevel();
             now->file_idx = iter.GetIdx();
             now->block_idx = iter.GetFile()->parser->GetBlock(key, now->block);
@@ -36,11 +36,10 @@ namespace LSMOPD {
         GetNow();
     }
     
-    ScanIter::~ScanIter() {
-        delete[] block_ptr_list;
-    }
+    ScanIter::~ScanIter() = default;
 
     void ScanIter::GetTuple(Tuple &res) {
+        if (is_end) return;
         if (now_least_type == 1) {
             auto &it = mem_ptr_list[now_least_pos].iter;
             if (!mem_ptr_list[now_least_pos].end()) {
@@ -49,6 +48,7 @@ namespace LSMOPD {
             }
         } else if (now_least_type == 2) {
             auto &now = block_ptr_list[now_least_pos];
+            if (!now.block) return;
             res = now.block->GetTupleWithIdx(std::string(now.now_key), now.idx);
             for (size_t i = 1; i < res.row.size(); i++) {
                 idx_t col_id = *((idx_t *) res.row[i].data());
@@ -82,10 +82,13 @@ namespace LSMOPD {
         }
         if (all_end) {
             is_end = true;
+            now_least_type = 0;
+            now_least_pos = -1;
         }
     }
 
     void ScanIter::next() {
+        if (is_end) return;
         std::string now_min;
         if (now_least_type == 1) {
             now_min = mem_ptr_list[now_least_pos].now_key;

@@ -32,8 +32,8 @@ namespace LSMOPD
 		close();
 	}
 
-	bool FileWriter::append(const char* data, int32_t len, bool flush) {
-		int32_t data_offset = 0;
+	bool FileWriter::append(const char* data, int64_t len, bool flush) {
+		int64_t data_offset = 0;
 		assert(data != nullptr);
 		if (len == 0) {
 			return true;
@@ -95,7 +95,7 @@ namespace LSMOPD
 		fd = -1;
 	}
 
-	bool FileWriter::buf_persist(const char* data, int32_t len) {
+	bool FileWriter::buf_persist(const char* data, int64_t len) {
 		START_WRITE_PROFILER();
 		auto ret = write(fd, data, len);
 		cnt += ret;

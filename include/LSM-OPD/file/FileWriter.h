@@ -9,8 +9,8 @@ namespace LSMOPD
 {
 	class FileWriter final {
 	private:
-		static constexpr int32_t BUFFER_SIZE = 1024 * 128;
-		int32_t buffer_offset = 0;
+		static constexpr int64_t BUFFER_SIZE = 1024 * 128;
+		int64_t buffer_offset = 0;
 		char buffer[BUFFER_SIZE]{};
 
 		int32_t fd;
@@ -21,14 +21,14 @@ namespace LSMOPD
 
 		~FileWriter();
 
-		bool append(const char* data, int32_t len, bool flush = false);
+		bool append(const char* data, int64_t len, bool flush = false);
 		bool flush();
 		size_t get_offset() const { return buffer_offset; }
 		void sync();
 		size_t file_size() const { return cnt; };
 		void close();
 	private:
-		bool buf_persist(const char* data, int32_t len);
+		bool buf_persist(const char* data, int64_t len);
 
 		bool is_buffer_full() const {
 			return buffer_offset == BUFFER_SIZE;

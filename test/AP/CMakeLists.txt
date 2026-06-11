@@ -12,5 +12,5 @@ target_include_directories(ap_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/include/catch
 )
 
-target_link_libraries(ap_tests PRIVATE lsm-opd profiler folly)
+target_link_libraries(ap_tests PRIVATE lsm-opd profiler folly tcmalloc)
 

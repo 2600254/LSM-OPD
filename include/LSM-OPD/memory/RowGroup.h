@@ -16,7 +16,9 @@ namespace LSMOPD {
         RowGroup(DB* _db,  RelFileMetaData<std::string>* _file);
 
         ~RowGroup() {
-            if(keys != nullptr) delete[] keys;
+            if (keys != nullptr) free(keys);
+            if (scan_pos != nullptr) free(scan_pos);
+            if (parser != nullptr) delete parser;
             for(auto x : cols) {
                 if(x != nullptr) free(x);
             }

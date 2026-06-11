@@ -1,4 +1,8 @@
 #pragma once
+#include <unordered_map>
+#include "LSM-OPD/compress/ordered_dictionary.h"
+#include <utility>
+#include <vector>
 #include "LSM-OPD/sstable/BlockParser.h"
 #include "LSM-OPD/sstable/RelVersion.h"
 #include "LSM-OPD/memory/RowMemoryManager.h"
@@ -7,6 +11,10 @@ namespace LSMOPD {
     class ScanIter {
     public:
         ScanIter(RelVersion *rel_version,  std::shared_ptr<relMemTable> x, std::string key);
+        ScanIter(const ScanIter &) = delete;
+        ScanIter &operator=(const ScanIter &) = delete;
+        ScanIter(ScanIter &&other) noexcept = default;
+        ScanIter &operator=(ScanIter &&other) noexcept = default;
         
         ~ScanIter();
 
@@ -27,6 +35,32 @@ namespace LSMOPD {
             idx_t block_idx, idx;
             BlockParser<std::string> *block = nullptr;
             std::string now_key;
+
+            BlockPointer() = default;
+            BlockPointer(const BlockPointer &) = delete;
+            BlockPointer &operator=(const BlockPointer &) = delete;
+            BlockPointer(BlockPointer &&other) noexcept
+                : is_end(other.is_end), level(other.level), file_idx(other.file_idx),
+                  block_idx(other.block_idx), idx(other.idx), block(other.block),
+                  now_key(std::move(other.now_key)) {
+                other.block = nullptr;
+                other.is_end = true;
+            }
+            BlockPointer &operator=(BlockPointer &&other) noexcept {
+                if (this != &other) {
+                    if (block) delete block;
+                    is_end = other.is_end;
+                    level = other.level;
+                    file_idx = other.file_idx;
+                    block_idx = other.block_idx;
+                    idx = other.idx;
+                    block = other.block;
+                    now_key = std::move(other.now_key);
+                    other.block = nullptr;
+                    other.is_end = true;
+                }
+                return *this;
+            }
 
             ~BlockPointer() {
                 if (block) delete block;
@@ -85,11 +119,11 @@ namespace LSMOPD {
             }
         };
 
-        BlockPointer *block_ptr_list;
+        std::vector<BlockPointer> block_ptr_list;
         std::vector<MemPointer> mem_ptr_list;
 
-        int now_least_type; // 0 indicated invalid, 1 indicated in mem-list, 2 in block-list
-        int now_least_pos; //pos in the list
+        int now_least_type = 0; // 0 indicated invalid, 1 indicated in mem-list, 2 in block-list
+        int now_least_pos = -1; // pos in the list
 
         int mem_ptr_num = 0;
         int block_ptr_num = 0;

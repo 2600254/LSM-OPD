@@ -88,7 +88,6 @@ namespace LSMOPD {
             for (auto cur_file: cur_level) {
                 auto reader = db->ReaderCaches->find(cur_file);
                 auto parser = RelFileParser<std::string>(reader, db->options, cur_file->file_size, cur_file);
-                auto DictList = cur_file->dictionary;
                 RowGroup cur_row_group(db, cur_file);
                 cur_row_group.GetKeyData();
                 cur_row_group.GetAllColData();

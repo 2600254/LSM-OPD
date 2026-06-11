@@ -30,6 +30,7 @@ namespace LSMOPD
         for (size_t i = 0; i < size; ++i) {
             uniqueStrings.insert(data[i]);
         }
+        uniqueStrings.erase("");
 
         stringToIndex.clear();
         indexToString.clear();
@@ -100,7 +101,7 @@ namespace LSMOPD
 		for (size_t i = 0; i < size; ++i) {
 			data[i] = getMapping(original[i]);
 		}
-        stringToIndex.clear();
+        std::unordered_map<std::string, int>().swap(stringToIndex);
     }
 
 

@@ -55,8 +55,10 @@ namespace LSMOPD {
             for (auto &i: low_compact_thread)
                 if (i->joinable())
                     i->join();
-            read_rel_version.load()->DecRef();
-            current_rel_version->DecRef();
+            RelVersion* read_load = read_rel_version.load();
+            read_load->DecRef();
+			if (read_load != current_rel_version)
+                current_rel_version->DecRef();
         }
 #ifdef RUN_PROFILER
         for (auto profiler : compaction_profilers_) {

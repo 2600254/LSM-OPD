@@ -142,7 +142,7 @@ namespace LSMOPD {
                 }
                 free(vals);
                 free(keys);
-                free(DictList);
+                delete []DictList;
                 free(file_ids);
                 return nullptr;
             }
@@ -344,7 +344,7 @@ namespace LSMOPD {
         free(key_num);
         free(vals);
         free(keys);
-        free(DictList);
+        delete[] DictList;
         free(file_ids);
 
         if (rel_builder) delete rel_builder;

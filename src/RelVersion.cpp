@@ -232,7 +232,7 @@ namespace LSMOPD {
     void RelVersionIterator::next() {
         if (end)
             return;
-        if (level == 0 && idx < version->FileIndex[level].size() - 1) {
+        if (level == 0) {
             for (++idx; idx < version->FileIndex[level].size(); idx++) {
                 auto &x = version->FileIndex[level][idx];
                 if (x->key_min > key_max
@@ -241,10 +241,15 @@ namespace LSMOPD {
                 }
                 return;
             }
-        }
-        if (idx == version->FileIndex[level].size() - 1 ||
-            version->FileIndex[level][++idx]->key_min > key_max)
             nextlevel();
+            return;
+        }
+        if (idx + 1 >= version->FileIndex[level].size() ||
+            version->FileIndex[level][idx + 1]->key_min > key_max) {
+            nextlevel();
+            return;
+        }
+        ++idx;
     }
     
     void RelVersionIterator::nextscankfile() {
