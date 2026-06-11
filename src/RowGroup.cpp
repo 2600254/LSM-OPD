@@ -16,13 +16,14 @@ namespace LSMOPD {
         }
         auto reader = db->ReaderCaches->find(file);
         parser = new RelFileParser<std::string>(reader, db->options, file->file_size, file);
+        dic = file->GetDict();
     }
 
 
     bool RowGroup::Scan(idx_t col_id, Vector &result) {
         idx_t scan_num = key_num - scan_pos[col_id];
         if (!scan_num) return false;
-        result = Vector(&file->dictionary[col_id]);
+        result = Vector(&dic->at(col_id));
         
         if (scan_num >= STANDARD_VECTOR_SIZE) {
             result.SetData(cols[col_id] + scan_pos[col_id], STANDARD_VECTOR_SIZE, scan_pos[col_id]);

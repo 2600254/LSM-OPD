@@ -34,51 +34,111 @@ namespace LSMOPD
         BloomFilter bloom_filter;
         idx_t reader_pos = -1;
         size_t id = 0;
-        std::vector<OrderedDictionary> dictionary;
+        using DictList = std::vector<OrderedDictionary>;
+
+        std::atomic<std::weak_ptr<DictList> > dictionary;
         Key_t key_min, key_max;
         idx_t key_num, col_num;
 
         idx_t block_count;
         size_t block_meta_begin_pos;
+        size_t dict_begin_pos;
+        size_t single_val_size;
         size_t block_filter_size;
         size_t last_block_filter_size;
         idx_t block_func_num;
         RelFileParser<Key_t> *parser = nullptr;
+        std::atomic<int> dict_ref = 0;
+        std::atomic<bool> dict_loading = false;
         bool no_overlap_in_next_level = true;
 
-        RelFileMetaData() = default;
+        std::shared_ptr<DictList> GetDict() {
+            while (true) {
+                auto ans = dictionary.load(std::memory_order_acquire).lock();
+                if (ans != nullptr) {
+                    return ans;
+                }
 
-        // RelFileMetaData(RelFileMetaData &&x) : dictionary(x.dictionary), key_min(x.key_min), key_max(x.key_max){}
-        // RelFileMetaData(const RelFileMetaData &x) : dictionary(x.dictionary), key_min(x.key_min), key_max(x.key_max){
-        // }
+                bool expected = false;
+                if (dict_loading.compare_exchange_strong(expected, true,
+                                                          std::memory_order_acq_rel,
+                                                          std::memory_order_relaxed)) {
+                    try {
+                        auto loaded = std::make_shared<DictList>();
+                        loaded->resize(1);
+                        if (parser != nullptr) {
+                            OrderedDictionary dict;
+                            parser->GetDict(dict);
+                            (*loaded)[0] = std::move(dict);
+                        }
+                        dictionary.store(std::weak_ptr<DictList>(loaded), std::memory_order_release);
+                        dict_loading.store(false, std::memory_order_release);
+                        dict_loading.notify_all();
+                        return loaded;
+                    } catch (...) {
+                        dict_loading.store(false, std::memory_order_release);
+                        dict_loading.notify_all();
+                        throw;
+                    }
+                }
+
+                dict_loading.wait(true, std::memory_order_acquire);
+            }
+        }
+
+        void SetDict(const std::shared_ptr<DictList> &dict) {
+            dictionary.store(std::weak_ptr<DictList>(dict), std::memory_order_release);
+        }
+
+        void SetDict(const std::weak_ptr<DictList> &dict) {
+            dictionary.store(dict, std::memory_order_release);
+        }
+
+        std::weak_ptr<DictList> GetDictWeak() const {
+            return dictionary.load(std::memory_order_acquire);
+        }
+
+        std::string GetSingleValueFromDict(idx_t idx) {
+            auto x = dictionary.load(std::memory_order_acquire).lock();
+            if (x != nullptr) {
+                return x->at(0).getString(idx);
+            }
+            return parser->GetSingleValueFromDict(idx);
+        }
+
+        void ReleaseDict() {
+        }
+
+        RelFileMetaData() = default;
 
         RelFileMetaData(RelFileMetaData &&x) : file_name(x.file_name), level(x.level),
                                                file_id(x.file_id), ref(x.ref.load()),
                                                file_size(x.file_size), deletion(x.deletion), reader(x.reader.load()),
-                                               bloom_filter(std::move(x.bloom_filter)), id(x.id), dictionary(x.dictionary),
+                                               bloom_filter(std::move(x.bloom_filter)), id(x.id),
                                                key_min(x.key_min), key_max(x.key_max),
                                                key_num(x.key_num), col_num(x.col_num),
                                                block_count(x.block_count), block_meta_begin_pos(x.block_meta_begin_pos),
+                                               dict_begin_pos(x.dict_begin_pos), single_val_size(x.single_val_size),
                                                block_filter_size(x.block_filter_size),
                                                last_block_filter_size(x.last_block_filter_size),
                                                block_func_num(x.block_func_num),
-                                               parser(x.parser),
-                                               no_overlap_in_next_level(x.no_overlap_in_next_level)
-        {
+                                               parser(x.parser), dict_ref(x.dict_ref.load()) {
+            dictionary.store(x.dictionary.load(std::memory_order_acquire), std::memory_order_release);
         }
 
         RelFileMetaData(const RelFileMetaData &x) : file_name(x.file_name), level(x.level),
                                                     file_id(x.file_id), ref(x.ref.load()),
                                                     file_size(x.file_size), deletion(x.deletion), reader(x.reader.load()),
-                                                    bloom_filter(x.bloom_filter), id(x.id), dictionary(x.dictionary), key_min(x.key_min),
+                                                    bloom_filter(x.bloom_filter), id(x.id), key_min(x.key_min),
                                                     key_max(x.key_max), key_num(x.key_num), col_num(x.col_num), block_count(x.block_count),
                                                     block_meta_begin_pos(x.block_meta_begin_pos),
+                                                    dict_begin_pos(x.dict_begin_pos),
+                                                    single_val_size(x.single_val_size),
                                                     block_filter_size(x.block_filter_size),
                                                     last_block_filter_size(x.last_block_filter_size),
                                                     block_func_num(x.block_func_num),
-                                                    parser(x.parser),
-                                                    no_overlap_in_next_level(x.no_overlap_in_next_level)
-        {
+                                                    parser(x.parser), dict_ref(x.dict_ref.load()) {
+            dictionary.store(x.dictionary.load(std::memory_order_acquire), std::memory_order_release);
         }
 
         RelFileMetaData(idx_t _level, idx_t _file_id, Key_t _key_min, Key_t _key_max,

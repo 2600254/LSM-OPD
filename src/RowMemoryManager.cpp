@@ -83,23 +83,27 @@ namespace LSMOPD {
         RelFileBuilder<std::string> rfb(fw, db->options);
         TempColumn tmp(memtable.get(), total_size, memtable->column_num);
         idx_t **data = new idx_t *[memtable->column_num];
-        std::vector<OrderedDictionary *> dicts(memtable->column_num - 1);
+        auto fic = std::make_shared<std::vector<OrderedDictionary> >();
+        temp_file_metadata->SetDict(fic);
         for (size_t i = 0; i < memtable->column_num - 1; i++) {
             data[i] = new idx_t[total_size];
-            temp_file_metadata->dictionary.emplace_back(OrderedDictionary());
-            auto nsiz = temp_file_metadata->dictionary.size();
-            auto &now_dict = temp_file_metadata->dictionary[nsiz - 1];
+            fic->emplace_back(OrderedDictionary());
+            auto nsiz = fic->size();
+            auto &now_dict = fic->at(nsiz - 1);
             now_dict.importData(tmp.GetColumn(i + 1), total_size);
             now_dict.CompressData(data[i], tmp.GetColumn(i + 1), total_size);
         }
         rfb.ArrangeRelFileInfo(tmp.GetColumn(0), total_size, db->options->KEY_SIZE, memtable->column_num - 1,
-                               data);
+                               data, *fic);
         temp_file_metadata->bloom_filter = BloomFilter(total_size, db->options->FALSE_POSITIVE);
         for (size_t i = 0; i < total_size; i++) {
             temp_file_metadata->bloom_filter.insert(tmp.GetColumn(0)[i]);
         }
         temp_file_metadata->block_count = rfb.GetBlockCount();
         temp_file_metadata->block_meta_begin_pos = rfb.GetBlockMetaBeginPos();
+        temp_file_metadata->file_size = rfb.GetFileSize();
+        temp_file_metadata->dict_begin_pos = rfb.GetDictBeginPos();
+        temp_file_metadata->single_val_size = rfb.GetSingleValSize();
         for (size_t i = 0; i < memtable->column_num - 1; i++) {
             delete[] data[i];
         }
@@ -111,7 +115,6 @@ namespace LSMOPD {
         }
 
         auto vedit = new VersionEdit();
-        temp_file_metadata->file_size = fw->file_size();
         vedit->EditFileList.push_back(temp_file_metadata);
         return vedit;
     }

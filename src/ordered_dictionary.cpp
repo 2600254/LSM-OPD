@@ -104,5 +104,42 @@ namespace LSMOPD
         std::unordered_map<std::string, int>().swap(stringToIndex);
     }
 
+    size_t OrderedDictionary::serialize(std::string &result) const {
+        uint32_t size = static_cast<uint32_t>(indexToString.size());
+        result.append(reinterpret_cast<const char*>(&size), sizeof(size));
+
+        size_t maxlen = 0;
+        for (const auto &str: indexToString) {
+            maxlen = std::max(maxlen, str.size());
+        }
+        for (const auto &str: indexToString) {
+            result.append(reinterpret_cast<const char*>(str.data()), str.size());
+            if (str.size() < maxlen) {
+                result.append(maxlen - str.size(), '\0');
+            }
+        }
+        return maxlen;
+    }
+
+    void OrderedDictionary::deserialize(const std::string &data, size_t strSize) {
+        size_t offset = 0;
+        if (data.size() < sizeof(uint32_t)) {
+            throw std::runtime_error("Invalid data: too short for size header");
+        }
+        uint32_t count;
+        std::memcpy(&count, data.data() + offset, sizeof(count));
+        offset += sizeof(count);
+
+        indexToString.reserve(count);
+
+        for (uint32_t i = 0; i < count; ++i) {
+            indexToString.emplace_back(data.data() + offset, strSize);
+            offset += strSize;
+        }
+
+        if (offset != data.size()) {
+            throw std::runtime_error("Invalid data: extra bytes at end of buffer");
+        }
+    }
 
 }// namespace LSMOPD

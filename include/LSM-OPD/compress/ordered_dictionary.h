@@ -1,5 +1,6 @@
 #pragma once
 #include <set>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -27,7 +28,11 @@ namespace LSMOPD {
         std::string getString(int index) const;
 
         static OrderedDictionary merge(const OrderedDictionary& dict1, const OrderedDictionary& dict2);
-        
+    
+        size_t serialize(std::string &result) const;
+
+        void deserialize(const std::string &dict_serial, size_t strSize);
+      
         int getCount() {
             return indexToString.size();
         }

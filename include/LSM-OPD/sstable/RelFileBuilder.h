@@ -23,7 +23,7 @@ namespace LSMOPD {
         ~RelFileBuilder() = default;
 
         void ArrangeRelFileInfo(Key_t *keys, idx_t key_num, size_t key_size,
-                                idx_t col_num, idx_t **vals) {
+                                idx_t col_num, idx_t **vals, std::vector<OrderedDictionary> &opds) {
             if (!key_size) key_size = sizeof(Key_t);
             size_t tot_val_size = sizeof(idx_t) * col_num; //can be optimized
             idx_t single_block_num = options->MAX_BLOCK_SIZE / (key_size + tot_val_size);
@@ -73,6 +73,10 @@ namespace LSMOPD {
             now_offset_in_file += this->SetBlockMeta(now_offset_in_file);
 
             //put file meta here
+            dict_begin_pos = now_offset_in_file;
+            for (int i = 0; i < col_num; i++) {
+                now_offset_in_file += this->SetDict(now_offset_in_file, opds[i]);
+            }
             size_t header_size = 2 * key_size + sizeof(size_t) + 3 * sizeof(idx_t);
             std::string meta_data;
             util::PutFixed(meta_data, key_min);
@@ -83,17 +87,18 @@ namespace LSMOPD {
             util::PutFixed(meta_data, block_meta_begin_pos);
             writer->append(meta_data.data(), meta_data.size());
             file_size = now_offset_in_file + header_size;
-
-
             writer->flush();
         }
 
-        void SetDict(); //optional
         void SetBloomFilter();
 
         void SetKeyRange(Key_t _key_min, Key_t _key_max) {
             key_min = _key_min;
             key_max = _key_max;
+        }
+
+        size_t GetFileSize() {
+            return file_size;
         }
 
         idx_t GetBlockCount() {
@@ -104,12 +109,22 @@ namespace LSMOPD {
             return block_meta_begin_pos;
         }
 
+        size_t GetDictBeginPos() {
+            return dict_begin_pos;
+        }
+
+        size_t GetSingleValSize() {
+            return single_val_size;
+        }
+
     private:
         std::shared_ptr<FileWriter> writer;
         std::shared_ptr<Options> options;
         std::vector<BlockMetaT<Key_t> > block_meta;
         size_t file_size;
         size_t block_meta_begin_pos;
+        size_t dict_begin_pos;
+        size_t single_val_size;
         Key_t key_min, key_max;
         idx_t block_count;
         std::shared_ptr<BloomFilter> global_filter = nullptr;
@@ -142,6 +157,13 @@ namespace LSMOPD {
             writer->append(metadata.data(), metadata.size());
 
             return metadata.size();
+        }
+
+        size_t SetDict(size_t offset,const OrderedDictionary &opd) {
+            std::string opd_serial;
+            single_val_size = opd.serialize(opd_serial);
+            writer->append(opd_serial.data(), opd_serial.size());
+            return opd_serial.size();
         }
     };
 }

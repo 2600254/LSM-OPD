@@ -43,6 +43,8 @@ namespace LSMOPD {
             col_num = _meta->col_num;
             block_count = _meta->block_count;
             block_meta_begin_pos = _meta->block_meta_begin_pos;
+            dict_begin_pos = _meta->dict_begin_pos;
+            single_val_size = _meta->single_val_size;
             size_t meta_size = key_size + 2 * sizeof(size_t);
             size_t now_meta_offset = block_meta_begin_pos;
             size_t tot_meta_size = (meta_size) * (block_count - 1) + meta_size;
@@ -68,7 +70,9 @@ namespace LSMOPD {
         RelFileParser(RelFileParser &&x) : reader(x.reader), options(x.options), file_size(x.file_size),
                                            col_num(x.col_num), key_num(x.key_num), block_count(x.block_count),
                                            key_min(x.key_min), key_max(x.key_max),
-                                           block_meta_begin_pos(x.block_meta_begin_pos), block_meta(x.block_meta) {
+                                           block_meta_begin_pos(x.block_meta_begin_pos), block_meta(x.block_meta),
+                                           dict_begin_pos(x.dict_begin_pos), single_val_size(x.single_val_size),
+                                           block_meta(x.block_meta) {
             x.valid = false;
         }
 
@@ -145,6 +149,26 @@ namespace LSMOPD {
             }
         }
 
+        void GetDict(OrderedDictionary &opd) {
+            std::string s;
+            size_t header_size = 2 * Options::KEY_SIZE + sizeof(size_t) + 3 * sizeof(idx_t);
+            size_t dict_size = file_size - dict_begin_pos - header_size;
+            s.resize(dict_size);
+            read(s, dict_size, dict_begin_pos);
+            opd.deserialize(s, single_val_size);
+        }
+
+        std::string GetSingleValueFromDict(idx_t idx) {
+            size_t offset = dict_begin_pos + idx * single_val_size + sizeof(uint32_t);
+            std :: string s;
+            s.resize(single_val_size);
+            if (!reader->fread(s.data(), single_val_size, offset)) {
+                std::cout << "read fail begin" << std::endl;
+                ++*(int *) NULL;
+            }
+            return s;
+        }
+
         //temporarily only support one column (just for experiment)
         void GetKVTogether(Key_t *keys, idx_t &key_num, idx_t *vals, idx_t &val_num, idx_t col_id) {
             int idx = 0;
@@ -219,6 +243,8 @@ namespace LSMOPD {
         idx_t block_count = 0;
         Key_t key_min, key_max;
         size_t block_meta_begin_pos;
+        size_t dict_begin_pos;
+        size_t single_val_size;
         size_t block_filter_size;
         size_t last_block_filter_size;
         idx_t block_func_num;
@@ -226,5 +252,28 @@ namespace LSMOPD {
         std::vector<BlockMetaT<Key_t> > block_meta;
 
         bool valid = true;
+        void read(char *buf, size_t count, size_t offset)
+        {
+            size_t gb = 1024 * 1024 * 1024;
+            if (count > gb)
+            {
+                read(buf + gb, count - gb, offset + gb);
+                count = gb;
+            }
+            if (!reader->fread(buf, count, offset))
+            {
+                std::cout << "read fail" << std::endl;
+                exit(-1);
+            }
+        }
+        void read(std::string &buf, size_t count, size_t offset)
+        {
+            if (buf.size() < count)
+            {
+                std::cout << "read buffer size error" << std::endl;
+                exit(-1);
+            }
+            read(buf.data(), count, offset);
+        }
     };
 }

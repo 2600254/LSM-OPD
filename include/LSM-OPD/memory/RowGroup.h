@@ -22,6 +22,7 @@ namespace LSMOPD {
             for(auto x : cols) {
                 if(x != nullptr) free(x);
             }
+            file->ReleaseDict();
         }
 
         void GetKeyData() {
@@ -62,9 +63,9 @@ namespace LSMOPD {
         char* keys = nullptr;
         std::vector<idx_t*> cols;
         RelFileParser<std::string>* parser;
-
+        std::shared_ptr<std::vector<OrderedDictionary> > dic;
         OrderedDictionary* dict(idx_t col_id) {
-            return &file->dictionary[col_id];
+            return &dic->at(col_id);
         }
 
         friend class DB;

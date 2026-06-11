@@ -64,9 +64,9 @@ namespace LSMOPD {
                     if (!found.row.empty()) {
                         for (size_t i = 1; i < found.row.size(); i++) {
                             idx_t col_id = *((idx_t *) found.row[i].data());
-                            found.row[i] = iter.GetFile()->dictionary[i - 1].
-                            getString(col_id);
+                            found.row[i] = static_cast<RelFileMetaData<std::string> *>(iter.GetFile())->GetSingleValueFromDict(col_id);
                         }
+                        iter.GetFile()->ReleaseDict();
                         // END_OPERATOR_PROFILER("GetTuple");
                         return found;
                     }
@@ -110,14 +110,18 @@ namespace LSMOPD {
         std::vector<std::unique_ptr<Tuple>> res;
         while (!iter.End()) {
             auto cur_file = iter.GetFile();
+            auto rel_file = static_cast<RelFileMetaData<std::string> *>(cur_file);
             RelFileParser<std::string>* parser = cur_file->parser;
             auto an = parser->GetKTuple(now_level_k, key);
+            std::shared_ptr<std::vector<OrderedDictionary> > dict;
             for (auto x: an) {
                 if (!x.row.empty()) {
+                    if (dict == nullptr) {
+                        dict = rel_file->GetDict();
+                    }
                     for (size_t i = 1; i < x.row.size(); i++) {
                         idx_t col_id = *((idx_t *) x.row[i].data());
-                        x.row[i] = iter.GetFile()->dictionary[i - 1].
-                        getString(col_id);
+                        x.row[i] = dict->at(i - 1).getString(col_id);
                     }
                     res.emplace_back(std::make_unique<Tuple>(std::move(x)));
                 }

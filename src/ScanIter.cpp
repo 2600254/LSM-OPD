@@ -52,7 +52,7 @@ namespace LSMOPD {
             res = now.block->GetTupleWithIdx(std::string(now.now_key), now.idx);
             for (size_t i = 1; i < res.row.size(); i++) {
                 idx_t col_id = *((idx_t *) res.row[i].data());
-                res.row[i] = rel_version->FileIndex[now.level][now.file_idx]->dictionary[i - 1].getString(col_id);
+                res.row[i] = rel_version->FileIndex[now.level][now.file_idx]->GetSingleValueFromDict(col_id);
             }
         }
     }

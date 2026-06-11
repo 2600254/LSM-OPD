@@ -59,7 +59,7 @@ namespace LSMOPD {
     VersionEdit *RelFileManager::MergeRelFile(RelCompaction<std::string> &compaction) {
         if (compaction.file_list.size() == 1)
         {
-            auto old_file = compaction.file_list[0];
+            auto old_file = static_cast<RelFileMetaData<std::string> *>(compaction.file_list[0]);
             auto temp_file_metadata = new RelFileMetaData<std::string>(
                 compaction.target_level, compaction.file_id, old_file->key_min, old_file->key_max,
                 old_file->key_num, old_file->col_num);
@@ -69,9 +69,12 @@ namespace LSMOPD {
                 db->options->STORAGE_DIR + "/" + src_file_name,
                 db->options->STORAGE_DIR + "/" + dst_file_name
             );
-            temp_file_metadata->dictionary = old_file->dictionary;
+            temp_file_metadata->SetDict(old_file->GetDictWeak());
             temp_file_metadata->block_count = old_file->block_count;
             temp_file_metadata->block_meta_begin_pos = old_file->block_meta_begin_pos;
+            temp_file_metadata->dict_begin_pos = old_file->dict_begin_pos;
+            temp_file_metadata->single_val_size = old_file->single_val_size;
+            temp_file_metadata->file_size = old_file->file_size;
             temp_file_metadata->bloom_filter = old_file->bloom_filter;
             VersionEdit *edit = new VersionEdit();
             edit->EditFileList.push_back(temp_file_metadata);
@@ -83,13 +86,11 @@ namespace LSMOPD {
         size_t file_size = compaction.file_list.size();
         RelFileParser<std::string> *parsers[file_size];
         int16_t *file_ids = (int16_t *) malloc(sizeof(int16_t) * file_size);
-        std::vector<OrderedDictionary> **DictList = (std::vector<OrderedDictionary> **) malloc(
-            sizeof(std::vector<OrderedDictionary> *) * file_size);
-
+        auto DictList = new std::shared_ptr<std::vector<OrderedDictionary>>[file_size]();
         int file_num = 0;
         for (auto &file: compaction.file_list) {
             parsers[file_num] = file->parser;
-            DictList[file_num] = &file->dictionary;
+            DictList[file_num] = file->GetDict();
             if (file->level == compaction.target_level)
                 file_ids[file_num] = - 1000 + file->file_id;
             else
@@ -223,6 +224,7 @@ namespace LSMOPD {
 
             if ((size_t) key_buf_idx >= db->options->MEM_TABLE_MAX_SIZE) {
                 int nowidx = 0;
+                auto dicttt = std::make_shared<std::vector<OrderedDictionary> >();
                 for (idx_t i = 0; i < col_num; i++) {
                     std::vector<std::string> dict;
                     for (auto &entry: s[i]) {
@@ -232,7 +234,7 @@ namespace LSMOPD {
                         }
                         nowidx++;
                     }
-                    temp_file_metadata->dictionary.emplace_back(dict);
+                    dicttt->emplace_back(dict);
                 }
 
                 for (idx_t i = 0; i < col_num; i++) {
@@ -243,13 +245,17 @@ namespace LSMOPD {
                 }
 
                 rel_builder->ArrangeRelFileInfo(order_key_buf, key_buf_idx, db->options->KEY_SIZE, col_num,
-                                                real_val_buf);
+                                                real_val_buf, *dicttt);
+                temp_file_metadata->ReleaseDict();
                 temp_file_metadata->key_min = std::string(order_key_buf[0].c_str());
                 temp_file_metadata->key_max = std::string(last_key);
                 temp_file_metadata->key_num = key_buf_idx;
                 temp_file_metadata->col_num = col_num;
                 temp_file_metadata->block_count = rel_builder->GetBlockCount();
                 temp_file_metadata->block_meta_begin_pos = rel_builder->GetBlockMetaBeginPos();
+                temp_file_metadata->dict_begin_pos = rel_builder->GetDictBeginPos();
+                temp_file_metadata->single_val_size = rel_builder->GetSingleValSize();
+                temp_file_metadata->file_size = rel_builder->GetFileSize();
                 temp_file_metadata->bloom_filter = BloomFilter(key_buf_idx, db->options->FALSE_POSITIVE);
                 for (int i = 0; i < key_buf_idx; i++) {
                     temp_file_metadata->bloom_filter.insert(order_key_buf[i]);
@@ -281,6 +287,7 @@ namespace LSMOPD {
             // flush buf to a new file
             // build new dict
             int nowidx = 0;
+            auto dicttt = std::make_shared<std::vector<OrderedDictionary> >();
             for (idx_t i = 0; i < col_num; i++) {
                 std::vector<std::string> dict;
                 for (auto &entry: s[i]) {
@@ -290,7 +297,7 @@ namespace LSMOPD {
                     }
                     nowidx++;
                 }
-                temp_file_metadata->dictionary.emplace_back(dict);
+                dicttt->emplace_back(dict);
             }
             for (idx_t i = 0; i < col_num; i++) {
                 for (int j = 0; j < key_buf_idx; j++) {
@@ -300,13 +307,17 @@ namespace LSMOPD {
             }
 
             rel_builder->ArrangeRelFileInfo(order_key_buf, key_buf_idx, db->options->KEY_SIZE, col_num,
-                                            real_val_buf);
+                                            real_val_buf, *dicttt);
+            temp_file_metadata->ReleaseDict();
             temp_file_metadata->key_min = std::string(order_key_buf[0].c_str());
             temp_file_metadata->key_max = std::string(last_key);
             temp_file_metadata->key_num = key_buf_idx;
             temp_file_metadata->col_num = col_num;
             temp_file_metadata->block_count = rel_builder->GetBlockCount();
             temp_file_metadata->block_meta_begin_pos = rel_builder->GetBlockMetaBeginPos();
+            temp_file_metadata->dict_begin_pos = rel_builder->GetDictBeginPos();
+            temp_file_metadata->single_val_size = rel_builder->GetSingleValSize();
+            temp_file_metadata->file_size = rel_builder->GetFileSize();
             temp_file_metadata->bloom_filter = BloomFilter(key_buf_idx, db->options->FALSE_POSITIVE);
             for (int i = 0; i < key_buf_idx; i++) {
                 temp_file_metadata->bloom_filter.insert(order_key_buf[i]);
@@ -319,6 +330,9 @@ namespace LSMOPD {
             edit->EditFileList.back()->deletion = true;
         }
 
+        for (auto &file: compaction.file_list) {
+            static_cast<RelFileMetaData<std::string> *>(file)->ReleaseDict();
+        }
         for (int i = 0; i < file_num; i++) {
             delete[] keys[i];
             for (idx_t j = 0; j < col_num; j++) {
